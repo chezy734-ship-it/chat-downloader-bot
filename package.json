@@ -1,0 +1,15 @@
+{
+  "name": "chat-downloader-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "בוט Google Chat להורדת מדיה מיוטיוב (SaveBridge + אחסון זמני + משלוח)",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node render-server.js",
+    "check": "node --check render-server.js && node --check chat-bot.js && node --check storage-server.js && node --check savebridge-client.js && node --check cookies.js && node --check delivery.js && node --check oauth.js && node --check cookie-agent.js"
+  },
+  "dependencies": {}
+}

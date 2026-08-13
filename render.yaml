@@ -1,0 +1,39 @@
+# Render Blueprint — פריסת בוט ההורדות על התוכנית החינמית (בלי כרטיס אשראי)
+#
+# איך משתמשים:
+#   1. דוחפים את התיקייה הזו (כולל הקבצים למטה) ל-GitHub (repo פרטי או ציבורי).
+#   2. ב-Render: New → Blueprint → מחברים את ה-repo.
+#   3. Render מזהה את render.yaml ומייצר את ה-service.
+#   4. ממלאים את המשתנים עם sync:false בלוח הבקרה (Secrets).
+#   5. החלק "Specific spaces" של ה-Chat app יפנה ל-URL שה-Render נותן
+#      (https://<name>.onrender.com).
+#
+# הערה: התוכנית החינמית מרדימה את ה-service אחרי ~15 דק' חוסר פעילות.
+# ההתעוררות הראשונה אחרי שינה אורכת ~30–60 שניות. כדי לשמור אותו ער —
+# מריצים את cookie-agent מהמחשב עם SB_INTERVAL_MS=600000 (דחיפה כל 10 דק'
+# היא גם request שמעיר את השרת).
+
+services:
+  - type: web
+    name: chat-downloader-bot
+    runtime: node
+    plan: free
+    rootDir: chat-downloader-bot
+    buildCommand: ""
+    startCommand: node render-server.js
+    healthCheckPath: /health
+    envVars:
+      - key: CHAT_VERIFICATION_TOKEN
+        sync: false
+      - key: ALLOWED_USERS
+        sync: false
+      - key: INCOMING_WEBHOOK_URL
+        sync: false
+      - key: SB_SYNC_TOKEN
+        sync: false
+      - key: STORAGE_TOKEN
+        sync: false
+      - key: DELIVERY_DEFAULT
+        value: drive
+      - key: GMAIL_TO
+        sync: false
