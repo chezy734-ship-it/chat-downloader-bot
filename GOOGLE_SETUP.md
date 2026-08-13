@@ -44,7 +44,7 @@
    | Avatar | קובץ תמונה (אופציונלי) |
    | Description | "מוריד מיוטיוב ושולח לדרייב/מייל" |
    | **Connection settings** | `Apps script project` **לא** — בוחרים **`HTTPS endpoint`** |
-   | **HTTPS endpoint URL** | כתובת השרת (למשל `https://bot.yourdomain.com/`) — אחרי פריסת ה-VPS + TLS |
+   | **HTTPS endpoint URL** | `https://chat-downloader-bot.onrender.com/` — השרת כבר חי על Render (חינם) |
    | **Verification token** | נוצר על ידי גוגל — **להעתיק ל-CHAT_VERIFICATION_TOKEN** |
    | App status | `LIVE – available to users` |
 3. **Save.**
@@ -92,9 +92,16 @@ node tools/oauth-cli.js        # (ראה מטה)
 
 1. הוסיפו את ה-Chat app למרחב: **Settings → Apps and integrations → Add apps** →
    תבחרו את האפליקציה לפי השם.
-2. `@DownloadBot https://youtu.be/...` → הבוט עונה "מתחיל להוריד..." ואז
-   שולח את הלינק לדרייב.
-3. בודקים את הלוגים: `journalctl -u sb-bot -f` (אחרי הוספת ה-unit).
+2. תיוג עם פקודות:
+   - `@DownloadBot עזרה` → רשימת הפקודות
+   - `@DownloadBot שיר https://youtu.be/...` → הורדה כאודיו (MP3)
+   - `@DownloadBot שיר נמוך https://youtu.be/...` → שיר קל (3GP)
+   - `@DownloadBot סרטון https://youtu.be/...` → הורדה כווידאו (best)
+   - `@DownloadBot סרטון 720 https://youtu.be/...` → וידאו באיכות נבחרת
+   - `@DownloadBot https://youtu.be/...` → אודיו כברירת מחדל
+   - `@DownloadBot טלגרם ...` → (בקרוב)
+3. הבוט עונה "מתחיל להוריד..." ואז שולח את הלינק לדרייב.
+4. בודקים את הלוגים: `journalctl -u sb-bot -f` (אחרי הוספת ה-unit).
 
 ---
 

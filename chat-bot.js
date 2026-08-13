@@ -5,7 +5,7 @@
  * איך זה עובד:
  *   Google Chat (תגית) → POST / (עם verification token)
  *     1. אימות הטוקן + allowlist (רק מי שבחרת)
- *     2. חילוץ קישור יוטיוב מההודעה
+ *     2. פענוח הפקודה: שיר / סרטון / עזרה / טלגרם (בהמשך) — או קישור בלבד
  *     3. תשובה מיידית: "מתחיל להוריד..."
  *     4. רקע: /api/save בשרת האחסון → משלוח (Drive ברירת מחדל) → הודעה סופית
  *     5. ההודעה הסופית נשלחת דרך Incoming Webhook (שמוגדר במרחב) —
@@ -101,14 +101,69 @@ async function postToWebhook(text) {
   return res.ok;
 }
 
+// ---------- פקודות ----------
+
+const COMMAND_HELP = [
+  "🎵 *הפקודות שלי:*",
+  "`שיר <קישור>` — שיר באיכות מלאה (MP3)",
+  "`שיר נמוך <קישור>` — שיר קל (3GP, קטן — לטלפון/וואטסאפ)",
+  "`סרטון <קישור>` — וידאו באיכות מירבית",
+  "`סרטון 720/480 <קישור>` — וידאו באיכות נבחרת",
+  "`עזרה` — רשימת הפקודות",
+  "`טלגרם <חיפוש>` — (בקרוב)",
+  "",
+  "או פשוט תשלח קישור יוטיוב — אוריד כאודיו כברירת מחדל 🎧",
+].join("\n");
+
+/**
+ * מפרק את הטקסט אחרי התיוג לפקודה:
+ *   "שיר [איכותי|נמוך] <קישור>" | "סרטון [1080|720|480] <קישור>" |
+ *   "עזרה" | "טלגרם ..." (בהמשך) | קישור בלבד
+ * מחזיר { kind: "download"|"help"|"telegram", format, quality, rest, label }
+ *
+ * איכויות SaveBridge (מהתוסף): audio/audio_best (MP3) · low_phone/480 (3GP) ·
+ * video/best|1080|720|480 (MP4).
+ */
+function parseCommand(text) {
+  const t = String(text || "").trim();
+  const lower = t.toLowerCase();
+
+  if (/^(עזרה|פקודות|עזרה|help|\?|\/help)(\s|$)/.test(lower)) return { kind: "help" };
+
+  // הערה: לא להשתמש ב-\b אחרי עברית (\w ASCII בלבד) — לכן (?:[\s:]|$)
+  const tg = lower.match(/^(טלגרם|טלגראם|טלגרמה|telegram|tg)(?:[\s:]|$)([\s\S]*)$/);
+  if (tg) return { kind: "telegram", query: tg[2].trim() };
+
+  // שיר / מוזיקה / אודיו — עם איכות אופציונלית
+  const audioMatch = lower.match(/^(שיר|מוזיקה|אודיו|סאונד|ש)(?:\s+(איכותי|איכות|נמוך|קל|לייט|low|3gp))?(?:[\s:]|$)([\s\S]*)$/);
+  if (audioMatch) {
+    const q = audioMatch[2] || "";
+    if (/נמוך|קל|לייט|low|3gp/.test(q)) {
+      return { kind: "download", format: "low_phone", quality: "480", rest: audioMatch[3].trim(), label: "שיר קל (3GP)" };
+    }
+    return { kind: "download", format: "audio", quality: "audio_best", rest: audioMatch[3].trim(), label: "השיר" };
+  }
+
+  // סרטון / וידאו — עם איכות אופציונלית
+  const videoMatch = lower.match(/^(וידאו|וידיאו|סרטון|סרט|mp4|v)(?:\s+(איכותי|איכות|1080|720|480|נמוך|קל|low|best|hd|full))?(?:[\s:]|$)([\s\S]*)$/);
+  if (videoMatch) {
+    const q = videoMatch[2] || "";
+    const qmap = { "1080": "1080", "720": "720", "480": "480", נמוך: "480", קל: "480", low: "480", איכותי: "best", איכות: "best", hd: "best", full: "best", best: "best" };
+    return { kind: "download", format: "video", quality: qmap[q] || "best", rest: videoMatch[3].trim(), label: "הסרטון" };
+  }
+
+  // ברירת מחדל: קישור בלבד → אודיו
+  return { kind: "download", format: "audio", quality: "audio_best", rest: t, label: "השיר" };
+}
+
 // ---------- התהליך (רקע) ----------
 
-async function runDownloadAndDeliver({ url, requesterEmail, threadLabel }) {
+async function runDownloadAndDeliver({ url, requesterEmail, format = "audio", quality = "audio_best", threadLabel }) {
   try {
     const saveRes = await fetch(`${STORAGE_URL}/api/save`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url, format: "audio", quality: "audio_best" }),
+      body: JSON.stringify({ url, format, quality }),
       signal: AbortSignal.timeout(10 * 60 * 1000),
     });
     const saveJson = await saveRes.json();
@@ -180,16 +235,35 @@ async function handle(req, res) {
     return replySync(res, "אין לך הרשאה להשתמש בבוט הזה.");
   }
 
-  // 3. קישור יוטיוב
-  const urlMatch = youtubeUrl(text);
-  if (!urlMatch) {
-    return replySync(res, "שלח קישור יוטיוב ואני אוריד לך אותו 🎵\nלדוגמה: `@הבוט https://youtu.be/xxxx`");
+  // 3. פענוח הפקודה
+  const cmd = parseCommand(text);
+  if (cmd.kind === "help") {
+    return replySync(res, COMMAND_HELP);
+  }
+  if (cmd.kind === "telegram") {
+    return replySync(
+      res,
+      "🔜 *טלגרם* — עדיין לא מחובר. בקרוב תוכל לבקש חיפוש והעברה מטלגרם.\nבינתיים נסה `שיר <קישור>` או `סרטון <קישור>`."
+    );
   }
 
-  // 4. אישור מיידי + 5. תהליך ברקע
-  replySync(res, `מתחיל להוריד את *${urlMatch}*... 🎧 אחזור עם התוצאה`);
+  // 4. קישור יוטיוב
+  const urlMatch = youtubeUrl(cmd.rest);
+  if (!urlMatch) {
+    return replySync(
+      res,
+      "לא מצאתי קישור יוטיוב 🔎\n" +
+        "`שיר https://youtu.be/xxxx` — אודיו\n" +
+        "`סרטון https://youtu.be/xxxx` — וידאו\n" +
+        "או תכתוב `עזרה` לכל הפקודות."
+    );
+  }
+  const label = cmd.label || (cmd.format === "video" ? "הסרטון" : "השיר");
+
+  // 5. אישור מיידי + 6. תהליך ברקע
+  replySync(res, `מתחיל להוריד את ${label}... 🎧 אחזור עם התוצאה`);
   setTimeout(() => {
-    runDownloadAndDeliver({ url: urlMatch, requesterEmail }).catch((e) =>
+    runDownloadAndDeliver({ url: urlMatch, requesterEmail, format: cmd.format, quality: cmd.quality }).catch((e) =>
       console.log(`[bot] שגיאה חריגה: ${e.message}`)
     );
   }, 50);

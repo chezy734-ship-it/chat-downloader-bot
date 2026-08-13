@@ -50,6 +50,22 @@ Google Chat (@mention + URL)
 > ירדו מיוטיוב דרך השרת ונשמרו ב-`storage/`. הסוכן דחף את העוגיות האמיתיות
 > לשרת עם אימות טוקן (403 לטוקן שגוי, 200 לטוקן נכון).
 
+## פקודות הבוט (בגוגל צ'אט, אחרי תיוג)
+
+| תיוג | מה קורה |
+|---|---|
+| `@הבוט עזרה` | רשימת הפקודות |
+| `@הבוט שיר <קישור>` | שיר באיכות מלאה (MP3) |
+| `@הבוט שיר נמוך <קישור>` | שיר קל (3GP, קטן — לטלפון/וואטסאפ) |
+| `@הבוט סרטון <קישור>` | וידאו באיכות מירבית |
+| `@הבוט סרטון 720/480 <קישור>` | וידאו באיכות נבחרת |
+| `@הבוט <קישור>` | אודיו כברירת מחדל |
+| `@הבוט טלגרם <חיפוש>` | (בקרוב) — חיפוש והעברה מטלגרם |
+
+מילים נרדפות: `שיר` = `מוזיקה`/`אודיו`/`סאונד` · `סרטון` = `וידאו`/`סרט`/`mp4`.
+איכויות: `שיר איכותי` (=MP3 מלא) · `שיר נמוך`/`קל`/`3gp` (3GP) ·
+`סרטון 1080/720/480/נמוך` (ברירת מחדל: best).
+
 ## הפעלה ובדיקה
 
 ```bash
@@ -82,24 +98,39 @@ Render נותן web service חינמי: Node, HTTPS מובנה, בלי כרטי�
 נרדם אחרי ~15 דק' חוסר פעילות ומתעורר על בקשה (התעוררות ראשונה ~30-60
 שניות). הבוט שלנו מונע-אירועים (עובד רק כמתייגים), אז זה מתאים.
 
+## ✅ ה-service כבר חי (13.8.2026)
+
+- **URL:** `https://chat-downloader-bot.onrender.com`
+- **Repo:** `https://github.com/chezy734-ship-it/chat-downloader-bot` (ציבורי)
+- **תוכנית:** Free · Frankfurt · Root Directory ריק (הקוד בשורש) ·
+  Build `true` · Start `node render-server.js`
+- **Env vars** (כ-Secrets): `CHAT_VERIFICATION_TOKEN`, `ALLOWED_USERS`,
+  `SB_SYNC_TOKEN`, `SB_RELAY_SECRET`.
+- **עוד חסר:** `INCOMING_WEBHOOK_URL` (ייווצר בשלב ה-Chat app).
+- פרטים מלאים (כולל ערכי ה-secrets) שמורים ב-`.freebuff/render-deployment.txt`.
+
+## פריסה מחדש / פריסה נוספת (הוראות מלאות)
+
 1. **דחיפה ל-GitHub** — repo פרטי או ציבורי עם התיקייה הזו (כולל
    `render.yaml`, `package.json`, `render-server.js`).
-2. **ב-Render**: `New +` → **Blueprint** → בחר את ה-repo.
-   (אם ה-repo כולל עוד דברים — הגדר Root Directory = `chat-downloader-bot`.)
-3. Render יוצר את ה-service מ-`render.yaml` ומנפק URL:
-   `https://chat-downloader-bot.onrender.com`.
-4. **מלא את ה-Secrets** בלוח הבקרה (אלה עם `sync: false`):
-   `CHAT_VERIFICATION_TOKEN`, `ALLOWED_USERS` (האימיילים שלך, פסיקים),
-   `INCOMING_WEBHOOK_URL` (ייווצר בשלב ה-Chat app),
-   `SB_SYNC_TOKEN` (סוד משותף עם הסוכן), `STORAGE_TOKEN` (אופציונלי).
-5. **בדיקה**: `curl https://<name>.onrender.com/health` → `{ok:true,...}`.
+2. **ב-Render**: `New +` → **Web Service** → **Public Git Repository**
+   → הדבק את URL ה-repo → Connect.
+   (Root Directory נשאר ריק — הקוד כבר בשורש ה-repo.)
+3. **הגדרות**: Name, Branch `main`, Region (Frankfurt מומלץ לישראל),
+   Build Command `true`, Start Command `node render-server.js`, Instance Free.
+4. **מלא את ה-Secrets**: `CHAT_VERIFICATION_TOKEN`, `ALLOWED_USERS`
+   (האימיילים שלך, פסיקים), `SB_SYNC_TOKEN` (סוד משותף עם הסוכן),
+   `SB_RELAY_SECRET` (מפתח ה-HMAC של SaveBridge), `INCOMING_WEBHOOK_URL`
+   (ייווצר בשלב ה-Chat app).
+5. **בדיקה**: `curl https://<name>.onrender.com/health` → `{ok:true,...}`
+   (מהמחשב הזה Netfree חוסם 418 — מהשרת/טלפון זה עובד).
 6. **במחשב האישי** — הסוכן דוחף עוגיות וגם שומר על השרת ער:
    ```bash
-   SB_SERVER_URL=https://<name>.onrender.com SB_SYNC_TOKEN=<סוד> \
+   SB_SERVER_URL=https://chat-downloader-bot.onrender.com SB_SYNC_TOKEN=<סוד> \
    SB_INTERVAL_MS=600000 node cookie-agent.js
    ```
 7. **Google Chat** — ההגדרה של ה-Chat app תפנה ל-
-   `https://<name>.onrender.com` (webhook POST).
+   `https://chat-downloader-bot.onrender.com` (webhook POST).
 
 > ⚠️ הערה: בחשבון החינמי הקובץ `data/cookies.txt` הוא ארעי (נמחק ב-
 > redeploy) — לא נורא: הסוכן דוחף עוגיות טריות כל 10 דק'.
