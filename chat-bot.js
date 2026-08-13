@@ -25,9 +25,12 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const PORT = Number(process.env.SB_BOT_PORT || 9795);
 const VERIFY_TOKEN = process.env.CHAT_VERIFICATION_TOKEN || "";
+// ה-URL שבו ה-Chat app מוגדר (audience ב-ID token של גוגל)
+const CHAT_APP_URL = (process.env.CHAT_APP_URL || "https://chat-downloader-bot.onrender.com/").replace(/\/+$/, "");
 const ALLOWED = (process.env.ALLOWED_USERS || "")
   .split(",")
   .map((s) => s.trim().toLowerCase())
@@ -39,6 +42,65 @@ const GMAIL_TO = process.env.GMAIL_TO || "";
 
 const oauth = require("./oauth");
 const { deliverToDrive, deliverViaGmail } = require("./delivery");
+
+// ---------- אימות ID token של Google Chat ----------
+// גוגל שולחת ב-Authorization header ID token חתום (OIDC) מהחשבון
+// chat@system.gserviceaccount.com עם audience = כתובת האנדפוינט.
+// בודקים את החתימה מול המפתחות הציבוריים של גוגל (JWKS).
+
+let jwksCache = null;
+let jwksCacheAt = 0;
+
+async function getJwks() {
+  if (jwksCache && Date.now() - jwksCacheAt < 3600 * 1000) return jwksCache;
+  const res = await fetch("https://www.googleapis.com/service_accounts/v1/jwk/chat@system.gserviceaccount.com");
+  if (!res.ok) throw new Error(`JWKS ${res.status}`);
+  jwksCache = await res.json();
+  jwksCacheAt = Date.now();
+  return jwksCache;
+}
+
+function b64url(buf) {
+  return Buffer.from(String(buf).replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}
+
+async function verifyChatIdToken(token, audience) {
+  const parts = String(token).split(".");
+  if (parts.length !== 3) return false;
+  const [h, p, s] = parts;
+  let header, payload;
+  try {
+    header = JSON.parse(b64url(h).toString("utf8"));
+    payload = JSON.parse(b64url(p).toString("utf8"));
+  } catch {
+    return false;
+  }
+  if (payload.email !== "chat@system.gserviceaccount.com") return false;
+  if (payload.aud && audience && payload.aud !== audience) return false;
+  if (payload.exp && payload.exp * 1000 < Date.now()) return false;
+  const jwks = await getJwks();
+  const key = jwks.keys.find((k) => k.kid === header.kid);
+  if (!key) return false;
+  const verifier = crypto.createVerify("RSA-SHA256");
+  verifier.update(h + "." + p);
+  const pub = crypto.createPublicKey({ key: { kty: key.kty, n: key.n, e: key.e }, format: "jwk" });
+  return verifier.verify(pub, b64url(s));
+}
+
+async function isAuthorizedRequest(auth, hostHeader) {
+  const token = String(auth || "").replace(/^Bearer\s+/i, "");
+  if (!token) return false;
+  // 1. טוקן סטטי (לבדיקות מקומיות / legacy)
+  if (VERIFY_TOKEN && auth === `Bearer ${VERIFY_TOKEN}`) return true;
+  // 2. ID token חתום של Google Chat
+  const audience = CHAT_APP_URL || (hostHeader ? `https://${hostHeader}` : "");
+  try {
+    return await verifyChatIdToken(token, audience);
+  } catch (e) {
+    console.log(`[bot] אימות ID token נכשל: ${e.message}`);
+    return false;
+  }
+}
 
 // ---------- עזרים ----------
 
@@ -209,10 +271,10 @@ async function handle(req, res) {
     return json(res, 404, { error: "לא נמצא" });
   }
 
-  // 1. אימות verification token (Google שולח: Authorization: Bearer <token>)
+  // 1. אימות — Google שולח ID token חתום (או טוקן סטטי legacy)
   const auth = req.headers.authorization || "";
-  if (!VERIFY_TOKEN || auth !== `Bearer ${VERIFY_TOKEN}`) {
-    console.log(`[bot] ❌ אימות נכשל (Authorization: ${auth.slice(0, 30)}...)`);
+  if (!(await isAuthorizedRequest(auth, req.headers.host))) {
+    console.log(`[bot] ❌ אימות נכשל (Authorization: ${auth.slice(0, 40)}...)`);
     return json(res, 403, { error: "unauthorized" });
   }
 
@@ -283,4 +345,10 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { handle, PORT };
+// עזר לבדיקות — הזרקת JWKS ללא רשת
+function __setJwksForTest(jwks) {
+  jwksCache = jwks;
+  jwksCacheAt = Date.now();
+}
+
+module.exports = { handle, PORT, isAuthorizedRequest, verifyChatIdToken, __setJwksForTest };

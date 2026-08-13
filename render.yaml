@@ -25,6 +25,8 @@ services:
     envVars:
       - key: CHAT_VERIFICATION_TOKEN
         sync: false
+      - key: CHAT_APP_URL
+        value: https://chat-downloader-bot.onrender.com/
       - key: ALLOWED_USERS
         sync: false
       - key: INCOMING_WEBHOOK_URL
