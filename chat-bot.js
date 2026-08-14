@@ -75,8 +75,16 @@ async function verifyChatIdToken(token, audience) {
   } catch {
     return false;
   }
-  if (payload.email !== "chat@system.gserviceaccount.com") return false;
-  if (payload.aud && audience && payload.aud !== audience) return false;
+  if (payload.email !== "chat@system.gserviceaccount.com") {
+    console.log(`[bot] אימות: email לא צפוי — got=${payload.email}`);
+    return false;
+  }
+  // audience מגיע מגוגל עם סלאש סוגר ב-URL של האנדפוינט — משווים בשתי הצורות
+  const audMatch = !payload.aud || !audience || payload.aud === audience || payload.aud === audience + "/";
+  if (!audMatch) {
+    console.log(`[bot] אימות: audience לא תואם — aud=${payload.aud} ours=${audience}`);
+    return false;
+  }
   if (payload.exp && payload.exp * 1000 < Date.now()) return false;
   const jwks = await getJwks();
   const key = jwks.keys.find((k) => k.kid === header.kid);
@@ -84,7 +92,9 @@ async function verifyChatIdToken(token, audience) {
   const verifier = crypto.createVerify("RSA-SHA256");
   verifier.update(h + "." + p);
   const pub = crypto.createPublicKey({ key: { kty: key.kty, n: key.n, e: key.e }, format: "jwk" });
-  return verifier.verify(pub, b64url(s));
+  const ok = verifier.verify(pub, b64url(s));
+  if (!ok) console.log(`[bot] אימות: חתימה נכשלה (kid=${header.kid} iss=${payload.iss})`);
+  return ok;
 }
 
 async function isAuthorizedRequest(auth, hostHeader) {
