@@ -66,13 +66,17 @@ function b64url(buf) {
 
 async function verifyChatIdToken(token, audience) {
   const parts = String(token).split(".");
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) {
+    console.log(`[bot] אימות: token לא JWT (parts=${parts.length}) — התחלה: ${String(token).slice(0, 24)}`);
+    return false;
+  }
   const [h, p, s] = parts;
   let header, payload;
   try {
     header = JSON.parse(b64url(h).toString("utf8"));
     payload = JSON.parse(b64url(p).toString("utf8"));
-  } catch {
+  } catch (e) {
+    console.log(`[bot] אימות: פענוח JSON נכשל: ${e.message}`);
     return false;
   }
   if (payload.email !== "chat@system.gserviceaccount.com") {
@@ -85,10 +89,16 @@ async function verifyChatIdToken(token, audience) {
     console.log(`[bot] אימות: audience לא תואם — aud=${payload.aud} ours=${audience}`);
     return false;
   }
-  if (payload.exp && payload.exp * 1000 < Date.now()) return false;
+  if (payload.exp && payload.exp * 1000 < Date.now()) {
+    console.log(`[bot] אימות: token פג (exp=${payload.exp} now=${Math.floor(Date.now() / 1000)})`);
+    return false;
+  }
   const jwks = await getJwks();
   const key = jwks.keys.find((k) => k.kid === header.kid);
-  if (!key) return false;
+  if (!key) {
+    console.log(`[bot] אימות: kid לא נמצא ב-JWKS (kid=${header.kid} iss=${payload.iss} aud=${payload.aud})`);
+    return false;
+  }
   const verifier = crypto.createVerify("RSA-SHA256");
   verifier.update(h + "." + p);
   const pub = crypto.createPublicKey({ key: { kty: key.kty, n: key.n, e: key.e }, format: "jwk" });
@@ -99,7 +109,10 @@ async function verifyChatIdToken(token, audience) {
 
 async function isAuthorizedRequest(auth, hostHeader) {
   const token = String(auth || "").replace(/^Bearer\s+/i, "");
-  if (!token) return false;
+  if (!token) {
+    console.log(`[bot] אימות: אין Authorization header בכלל (auth=${JSON.stringify(auth)})`);
+    return false;
+  }
   // 1. טוקן סטטי (לבדיקות מקומיות / legacy)
   if (VERIFY_TOKEN && auth === `Bearer ${VERIFY_TOKEN}`) return true;
   // 2. ID token חתום של Google Chat
